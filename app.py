@@ -1,29 +1,44 @@
 
+
+
+
+
 import streamlit as st
-from datetime import datetime
+from styles import apply_styles
+from utils import list_pdfs, download_button
 import pytz
+from datetime import datetime
 
-st.set_page_config(page_title="Mi Dashboard de Tiempo", page_icon="⏰")
 
-st.title("⏰ Dashboard de Fecha y Hora")
-st.write("Esta aplicación muestra la información temporal en tiempo real.")
+# Configuración de página
+st.set_page_config(page_title="Repositorio de Guías", layout="wide")
+apply_styles()
 
-# Selección de Zona Horaria (opcional, por defecto local)
-timezone = st.selectbox("Selecciona tu zona horaria:", pytz.all_timezones, index=pytz.all_timezones.index('America/Santiago'))
+st.title("📚 Descarga de Material")
 
-# Obtener datos
-now = datetime.now(pytz.timezone(timezone))
-fecha_actual = now.strftime("%d/%m/%Y")
-hora_actual = now.strftime("%H:%M:%S")
+# Secciones requeridas
+secciones = ["Python", "Economía", "Matemáticas", "Administración"]
+seleccion = st.sidebar.radio("Selecciona una categoría:", secciones)
 
-# Mostrar en columnas bonitas
-col1, col2 = st.columns(2)
+st.header(f"Guías de {seleccion}")
 
-with col1:
-    st.metric(label="Fecha Actual", value=fecha_actual)
+# Mapeo de carpetas (asegúrate de que existan en tu repo/PC)
+folder_map = {
+    "Python": "pdfs/python",
+    "Economía": "pdfs/economia",
+    "Matemáticas": "pdfs/mate",
+    "Administración": "pdfs/administracion"
+}
 
-with col2:
-    st.metric(label="Hora Local", value=hora_actual)
+folder_path = folder_map[seleccion]
+files = list_pdfs(folder_path)
 
-st.divider()
-st.write("Tip: Refresca la página para actualizar la hora.")
+if files:
+    for file in files:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.write(f"📄 {file}")
+        with col2:
+            download_button(f"{folder_path}/{file}", file)
+else:
+    st.info("Aún no hay archivos en esta sección.")
