@@ -171,8 +171,13 @@ RAMOS = {
 def render_portada():
     st.markdown(f"""
     <div class="hero">
-        <img src="{MONO_DATA_URI}" width="150" height="200"
-             style="display:block;margin:0 auto 10px auto;" alt="Ferrán"/>
+        <div style="position:relative; display:inline-block;">
+            <img src="{MONO_DATA_URI}" width="200"
+                 style="display:block;margin:0 auto;" alt="Ferrán"/>
+            <!-- Tapar el texto "Fido Dido" original con el fondo del hero -->
+            <div style="position:absolute;bottom:0;left:0;right:0;height:38px;
+                        background:linear-gradient(to bottom,transparent,#0f3460);"></div>
+        </div>
         <div class="hero-titulo">FERRÁN</div>
         <div class="hero-sub">Repositorio de recursos universitarios</div>
         <div class="hero-lema">"El conocimiento es el único recurso que crece al compartirse"</div>
