@@ -3,7 +3,7 @@ from pathlib import Path
 from mono_b64 import MONO_DATA_URI
 from ejercicios_python import EJERCICIOS
 
-st.set_page_config(page_title="Ferrán", page_icon="🐒", layout="centered")
+st.set_page_config(page_title="Ferrán's Library", page_icon="🐒", layout="centered")
 
 if "seccion" not in st.session_state:
     st.session_state.seccion = "portada"
@@ -176,9 +176,9 @@ def render_portada():
             <img src="{MONO_DATA_URI}"
                  style="width:100%; max-width:320px; display:block; margin:0 auto;"/>
         </div>
-        <div class="hero-titulo">F</div>
-        <div class="hero-sub">Repositorio de recursos universitarios</div>
-        <div class="hero-lema">"El conocimiento es el único recurso que crece al compartirse"</div>
+        <div class="hero-titulo">Ferrán</div>
+        <div class="hero-sub">Mis apuntes de la U</div>
+        <div class="hero-lema">"El conocimiento es poder"</div>
     </div>
     """, unsafe_allow_html=True)
 
