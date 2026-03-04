@@ -17,13 +17,14 @@ st.markdown("""
 
 .hero {
     background: linear-gradient(160deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
-    border-radius: 24px; padding: 36px 24px 28px 24px;
+    border-radius: 24px; padding: 0 0 28px 0;
     text-align: center; color: white; margin-bottom: 0;
     box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    overflow: hidden;
 }
-.hero-titulo { font-size: 52px; font-weight: 900; letter-spacing: 6px; margin: 10px 0 4px 0; }
-.hero-sub { font-size: 13px; opacity: 0.7; letter-spacing: 2px; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; }
-.hero-lema { font-size: 13px; color: #f0c040; font-style: italic; font-weight: bold; }
+.hero-titulo { font-size: 80px; font-weight: 900; letter-spacing: 6px; margin: 0 0 6px 0; line-height: 1; }
+.hero-sub { font-size: 13px; opacity: 0.7; letter-spacing: 2px; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; padding: 0 24px; }
+.hero-lema { font-size: 13px; color: #f0c040; font-style: italic; font-weight: bold; padding: 0 24px 4px 24px; }
 
 .seccion-titulo-bar {
     font-size: 17px; font-weight: 800; color: #1a1a2e;
@@ -153,10 +154,10 @@ RAMOS = {
              "nombre": "Programa Introducción a la Economía",
              "desc": "ICS161 · Programa oficial USM",
              "icono": "📊", "placeholder": False},
-            {"archivo": "mankiw_principios_economia.pdf",
+            {"archivo": "Mankiw-Principios de Economia 6taED.pdf",
              "nombre": "Principios de Economía — Mankiw",
              "desc": "Mankiw, G. (2012) · 6ª Ed. · Texto guía del ramo",
-             "icono": "📗", "placeholder": True},
+             "icono": "📗", "placeholder": False},
         ],
     },
     "python": {
@@ -171,14 +172,11 @@ RAMOS = {
 def render_portada():
     st.markdown(f"""
     <div class="hero">
-        <div style="position:relative; display:inline-block;">
-            <img src="{MONO_DATA_URI}" width="200"
-                 style="display:block;margin:0 auto;" alt="Ferrán"/>
-            <!-- Tapar el texto "Fido Dido" original con el fondo del hero -->
-            <div style="position:absolute;bottom:0;left:0;right:0;height:38px;
-                        background:linear-gradient(to bottom,transparent,#0f3460);"></div>
+        <div style="text-align:center; line-height:0; margin-bottom:-10px;">
+            <img src="{MONO_DATA_URI}"
+                 style="width:100%; max-width:320px; display:block; margin:0 auto;"/>
         </div>
-        <div class="hero-titulo">FERRÁN</div>
+        <div class="hero-titulo">F</div>
         <div class="hero-sub">Repositorio de recursos universitarios</div>
         <div class="hero-lema">"El conocimiento es el único recurso que crece al compartirse"</div>
     </div>
