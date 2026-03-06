@@ -1,6 +1,5 @@
 streamlit
 matplotlib
 pytz
-pandas
-numpy
 streamlit-autorefresh
+PyGithub>=1.58.0
