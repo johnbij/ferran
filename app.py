@@ -7,8 +7,8 @@ from styles import apply_styles
 from utils import download_button
 from ejercicios_python import EJERCICIOS
 
-# Maximum allowed upload size (250 MB)
-MAX_UPLOAD_BYTES = 250 * 1024 * 1024
+# GitHub Contents API has size limits; keep a safe margin under 100MB.
+MAX_GITHUB_UPLOAD_BYTES = 90 * 1024 * 1024
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Ferran", page_icon="📚", layout="wide")
@@ -23,6 +23,13 @@ def sanitize_filename(name: str) -> str:
     """Devuelve solo el nombre base del archivo eliminando separadores de ruta."""
     return os.path.basename(name).replace("..", "").strip()
 
+# ── Helper: get GitHub repo client ───────────────────────────────────────────
+def get_repo():
+    token = st.secrets["github"]["token"]
+    repo_name = st.secrets["github"]["repo"]
+    g = Github(token)
+    return g.get_repo(repo_name)
+
 # ── Helper: upload a file to GitHub ──────────────────────────────────────────
 def upload_to_github(file_bytes: bytes, file_name: str) -> bool:
     """Sube un archivo a la carpeta 'recién subidos' del repositorio de GitHub."""
@@ -30,56 +37,59 @@ def upload_to_github(file_bytes: bytes, file_name: str) -> bool:
     if not safe_name:
         st.error("Nombre de archivo inválido.")
         return False
+
+    if len(file_bytes) > MAX_GITHUB_UPLOAD_BYTES:
+        st.error(
+            "❌ El archivo es demasiado grande para subirse a GitHub desde la app. "
+            "Límite recomendado: 90 MB."
+        )
+        return False
+
     try:
-        token = st.secrets["github"]["token"]
-        repo_name = st.secrets["github"]["repo"]
-        g = Github(token)
-        repo = g.get_repo(repo_name)
-        path = f"recién subidos/{safe_name}"
+        repo = get_repo()
+        path = f"recién subidos/{{safe_name}}"
         try:
             existing = repo.get_contents(path)
             repo.update_file(
                 path=path,
-                message=f"Actualizar {safe_name}",
+                message=f"Actualizar {{safe_name}}",
                 content=file_bytes,
                 sha=existing.sha,
             )
-            st.success(f"✅ '{safe_name}' actualizado en GitHub")
+            st.success(f"✅ '{{safe_name}}' actualizado en GitHub")
         except UnknownObjectException:
             repo.create_file(
                 path=path,
-                message=f"Agregar {safe_name}",
+                message=f"Agregar {{safe_name}}",
                 content=file_bytes,
             )
-            st.success(f"✅ '{safe_name}' subido a GitHub")
+            st.success(f"✅ '{{safe_name}}' subido a GitHub")
         return True
     except GithubException as exc:
-        st.error(f"❌ Error GitHub: {exc.data.get('message', exc)}")
+        msg = exc.data.get("message", str(exc))
+        st.error(f"❌ Error GitHub: {{msg}}")
         return False
     except KeyError:
         st.error("❌ Secrets no configurados correctamente")
         return False
     except Exception as exc:
-        st.error(f"❌ Error: {str(exc)}")
+        st.error(f"❌ Error: {{str(exc)}}")
         return False
 
-# ── Helper: list files in 'recién subidos' ────────────────────────────────────
+# ── Helper: list files in 'recién subidos' ───────────────────────────────────
 def list_recent_uploads():
     """Obtiene archivos de 'recién subidos'."""
     try:
-        token = st.secrets["github"]["token"]
-        repo_name = st.secrets["github"]["repo"]
-        g = Github(token)
-        repo = g.get_repo(repo_name)
+        repo = get_repo()
         contents = repo.get_contents("recién subidos")
         return contents if isinstance(contents, list) else [contents]
     except UnknownObjectException:
         return []
     except GithubException as exc:
-        st.warning(f"No acceso a carpeta: {exc.data.get('message', exc)}")
+        st.warning(f"No acceso a carpeta: {{exc.data.get('message', exc)}}")
         return []
     except Exception as exc:
-        st.error(f"Error: {exc}")
+        st.error(f"Error: {{exc}}")
         return []
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -93,20 +103,27 @@ st.markdown("---")
 
 # Sección de UPLOAD
 st.subheader("⬆️ Subir archivo al repositorio")
+st.caption("Se guardará en la carpeta **recién subidos/**")
+
 uploaded_file = st.file_uploader(
     "Selecciona un archivo para subir a *recién subidos*",
     type=None,
-    help="Máximo 250 MB por archivo"
+    help="Por compatibilidad con GitHub, se recomienda un máximo de 90 MB por archivo.",
 )
 
 if uploaded_file is not None:
     file_size_mb = uploaded_file.size / (1024 * 1024)
-    if uploaded_file.size > MAX_UPLOAD_BYTES:
-        st.error(f"❌ Archivo demasiado grande ({file_size_mb:.1f} MB). Máximo: 250 MB")
+
+    if uploaded_file.size > MAX_GITHUB_UPLOAD_BYTES:
+        st.error(
+            f"❌ Archivo demasiado grande ({{file_size_mb:.1f}} MB). "
+            "Para subir desde la app, el máximo recomendado es 90 MB."
+        )
+        st.info("Si necesitas subir archivos más grandes, usa Google Drive o configura Git LFS.")
     else:
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.write(f"📄 {uploaded_file.name} ({file_size_mb:.1f} MB)")
+            st.write(f"📄 {{uploaded_file.name}} ({{file_size_mb:.1f}} MB)")
         with col2:
             if st.button("📤 Subir"):
                 file_bytes = uploaded_file.read()
@@ -143,15 +160,15 @@ PDF_PATHS = {
 
 if st.session_state.seccion in PDF_PATHS:
     path, title = PDF_PATHS[st.session_state.seccion]
-    st.markdown(f"### {title}")
+    st.markdown(f"### {{title}}")
     download_button(path, title)
 
 elif st.session_state.seccion == "python":
     st.markdown("### 🐍 Ejercicios Python")
     for categoria in EJERCICIOS:
-        with st.expander(f"{categoria['icono']} {categoria['categoria']}"):
+        with st.expander(f"{{categoria['icono']}} {{categoria['categoria']}}"):
             for ej in categoria["ejercicios"]:
-                st.markdown(f"**{ej['titulo']}**")
+                st.markdown(f"**{{ej['titulo']}}**")
                 st.info(ej["enunciado"])
                 if ej.get("ejemplo"):
                     st.code(ej["ejemplo"], language="text")
@@ -171,13 +188,13 @@ if st.session_state.seccion == "recientes":
         for archivo in archivos:
             col_a, col_b = st.columns([3, 1])
             with col_a:
-                st.markdown(f"📄 **{archivo.name}**")
+                st.markdown(f"📄 **{{archivo.name}}**")
             with col_b:
                 st.download_button(
                     label="⬇️ Descargar",
                     data=archivo.decoded_content,
                     file_name=archivo.name,
-                    key=f"dl_{archivo.sha}",
+                    key=f"dl_{{archivo.sha}}",
                 )
     else:
         st.info("📭 No hay archivos en la carpeta 'recién subidos' todavía.")
