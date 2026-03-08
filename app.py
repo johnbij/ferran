@@ -1,15 +1,23 @@
 import os
+from io import BytesIO
+from datetime import datetime
 
 import streamlit as st
-from github import Github, GithubException, UnknownObjectException
+
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 
 from mono_b64 import MONO_DATA_URI
 from styles import apply_styles
 from utils import download_button
 from ejercicios_python import EJERCICIOS
 
-# GitHub Contents API has strict size limits; keep a safe margin under 100MB.
-MAX_GITHUB_UPLOAD_BYTES = 90 * 1024 * 1024
+# Streamlit uploader limit (UI). Drive soporta grande; aquí dejamos 250MB como antes.
+MAX_UPLOAD_BYTES = 250 * 1024 * 1024
+
+# Google Drive scope
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
 # ── Page config ──────────────────────────────────────────────────────────────
@@ -21,130 +29,115 @@ if "seccion" not in st.session_state:
     st.session_state.seccion = None
 
 
-# ── Helper: sanitize filename ────────────────────────────────────────────────
 def sanitize_filename(name: str) -> str:
     """Devuelve solo el nombre base del archivo eliminando separadores de ruta."""
     return os.path.basename(name).replace("..", "").strip()
 
 
-# ── Helper: get GitHub repo client ───────────────────────────────────────────
-def get_repo():
-    token = st.secrets["github"]["token"]
-    repo_name = st.secrets["github"]["repo"]  # e.g. "johnbij/ferran"
-    g = Github(token)
-    return g.get_repo(repo_name)
+def get_drive_service():
+    """
+    Crea un cliente Drive API con cuenta de servicio desde st.secrets["google"].
+    """
+    creds_dict = dict(st.secrets["google"])
+    creds = service_account.Credentials.from_service_account_info(
+        creds_dict,
+        scopes=SCOPES,
+    )
+    return build("drive", "v3", credentials=creds)
 
 
-# ── Helper: upload a file to GitHub ──────────────────────────────────────────
-def upload_to_github(file_bytes: bytes, file_name: str) -> bool:
-    """Sube un archivo a la carpeta 'recién subidos' del repositorio de GitHub."""
+def upload_to_drive(file_bytes: bytes, file_name: str):
+    """
+    Sube un archivo a la carpeta configurada en st.secrets["folders"]["uploads_folder_id"].
+    Retorna (file_id, webViewLink).
+    """
     safe_name = sanitize_filename(file_name)
-
     if not safe_name:
-        st.error("Nombre de archivo inválido.")
-        return False
+        raise ValueError("Nombre de archivo inválido.")
 
-    if len(file_bytes) > MAX_GITHUB_UPLOAD_BYTES:
-        size_mb = len(file_bytes) / (1024 * 1024)
-        st.error(
-            f"❌ El archivo es demasiado grande ({size_mb:.1f} MB). "
-            "Para subir desde la app, el máximo recomendado es 90 MB."
+    folder_id = st.secrets["folders"]["uploads_folder_id"]
+    service = get_drive_service()
+
+    file_metadata = {"name": safe_name, "parents": [folder_id]}
+    media = MediaIoBaseUpload(
+        BytesIO(file_bytes),
+        mimetype="application/octet-stream",
+        resumable=True,
+    )
+
+    created = (
+        service.files()
+        .create(body=file_metadata, media_body=media, fields="id,webViewLink,name,createdTime")
+        .execute()
+    )
+    return created["id"], created.get("webViewLink", "")
+
+
+def list_drive_files(limit: int = 50):
+    """
+    Lista archivos en la carpeta configurada.
+    """
+    folder_id = st.secrets["folders"]["uploads_folder_id"]
+    service = get_drive_service()
+
+    results = (
+        service.files()
+        .list(
+            q=f"'{folder_id}' in parents and trashed=false",
+            fields="files(id,name,webViewLink,createdTime,size)",
+            orderBy="createdTime desc",
+            pageSize=limit,
         )
-        st.info("Si necesitas subir archivos más grandes, usa Google Drive o configura Git LFS.")
-        return False
-
-    try:
-        repo = get_repo()
-        path = f"recién subidos/{safe_name}"
-
-        try:
-            existing = repo.get_contents(path)
-            repo.update_file(
-                path=path,
-                message=f"Actualizar {safe_name}",
-                content=file_bytes,
-                sha=existing.sha,
-            )
-            st.success(f"✅ '{safe_name}' actualizado en GitHub")
-        except UnknownObjectException:
-            repo.create_file(
-                path=path,
-                message=f"Agregar {safe_name}",
-                content=file_bytes,
-            )
-            st.success(f"✅ '{safe_name}' subido a GitHub")
-
-        return True
-
-    except GithubException as exc:
-        msg = exc.data.get("message", str(exc))
-        st.error(f"❌ Error GitHub: {msg}")
-        return False
-    except KeyError:
-        st.error("❌ Secrets no configurados correctamente")
-        return False
-    except Exception as exc:
-        st.error(f"❌ Error: {str(exc)}")
-        return False
-
-
-# ── Helper: list files in 'recién subidos' ───────────────────────────────────
-def list_recent_uploads():
-    """Obtiene archivos de 'recién subidos'."""
-    try:
-        repo = get_repo()
-        contents = repo.get_contents("recién subidos")
-        return contents if isinstance(contents, list) else [contents]
-    except UnknownObjectException:
-        return []
-    except GithubException as exc:
-        st.warning(f"No acceso a carpeta: {exc.data.get('message', exc)}")
-        return []
-    except Exception as exc:
-        st.error(f"Error: {exc}")
-        return []
+        .execute()
+    )
+    return results.get("files", [])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # INTERFAZ PRINCIPAL
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Imagen de Fido Dido
 st.image(MONO_DATA_URI, use_column_width=True)
 st.title("📚 Ferran — Recursos Académicos")
 st.markdown("---")
 
-# Sección de UPLOAD
-st.subheader("⬆️ Subir archivo al repositorio")
-st.caption("Se guardará en la carpeta **recién subidos/** del repositorio.")
+# ── Upload a Google Drive ─────────────────────────────────────────────────────
+st.subheader("⬆️ Subir archivo (Google Drive)")
+st.caption("Se guardará en tu carpeta configurada de Google Drive (sin login de usuario).")
+
 uploaded_file = st.file_uploader(
-    "Selecciona un archivo para subir a *recién subidos*",
+    "Selecciona un archivo para subir",
     type=None,
-    help="Por compatibilidad con GitHub, se recomienda un máximo de 90 MB por archivo.",
+    help="Máximo 250 MB por archivo.",
 )
 
 if uploaded_file is not None:
     file_size_mb = uploaded_file.size / (1024 * 1024)
 
-    if uploaded_file.size > MAX_GITHUB_UPLOAD_BYTES:
-        st.error(
-            f"❌ Archivo demasiado grande ({file_size_mb:.1f} MB). "
-            "Para subir desde la app, el máximo recomendado es 90 MB."
-        )
-        st.info("Si necesitas subir archivos más grandes, usa Google Drive o configura Git LFS.")
+    if uploaded_file.size > MAX_UPLOAD_BYTES:
+        st.error(f"❌ Archivo demasiado grande ({file_size_mb:.1f} MB). Máximo: 250 MB")
     else:
         col1, col2 = st.columns([3, 1])
         with col1:
             st.write(f"📄 {uploaded_file.name} ({file_size_mb:.1f} MB)")
         with col2:
             if st.button("📤 Subir"):
-                with st.spinner("Subiendo a GitHub..."):
-                    file_bytes = uploaded_file.read()
-                    upload_to_github(file_bytes, uploaded_file.name)
+                try:
+                    with st.spinner("Subiendo a Google Drive..."):
+                        file_bytes = uploaded_file.read()
+                        file_id, link = upload_to_drive(file_bytes, uploaded_file.name)
+
+                    st.success(f"✅ '{uploaded_file.name}' subido a Google Drive")
+                    if link:
+                        st.markdown(f"🔗 Abrir archivo: {link}")
+                    else:
+                        st.info(f"Archivo ID: {file_id}")
+                except Exception as exc:
+                    st.error(f"❌ Error al subir a Google Drive: {exc}")
 
 st.markdown("---")
 
-# Secciones principales
+# ── Secciones ────────────────────────────────────────────────────────────────
 st.subheader("📂 Secciones")
 col1, col2, col3, col4 = st.columns(4)
 
@@ -164,7 +157,6 @@ with col4:
     if st.button("🐍 Ejercicios\nPython", key="python", use_container_width=True):
         st.session_state.seccion = "python"
 
-# Renderizar sección seleccionada
 PDF_PATHS = {
     "ics111": ("pdfs/ics111_administracion_empresas.pdf", "ICS111 - Administración de Empresas"),
     "ics161": ("pdfs/ics161_introduccion_economia.pdf", "ICS161 - Introducción a la Economía"),
@@ -190,24 +182,30 @@ elif st.session_state.seccion == "python":
 
 st.markdown("---")
 
-# Botón "Ver Recién Subidos"
 if st.button("🗂️ Ver Recién Subidos", key="recientes", use_container_width=True):
     st.session_state.seccion = "recientes"
 
 if st.session_state.seccion == "recientes":
-    st.subheader("📥 Archivos subidos recientemente")
-    archivos = list_recent_uploads()
-    if archivos:
-        for archivo in archivos:
-            col_a, col_b = st.columns([3, 1])
-            with col_a:
-                st.markdown(f"📄 **{archivo.name}**")
-            with col_b:
-                st.download_button(
-                    label="⬇️ Descargar",
-                    data=archivo.decoded_content,
-                    file_name=archivo.name,
-                    key=f"dl_{archivo.sha}",
-                )
-    else:
-        st.info("📭 No hay archivos en la carpeta 'recién subidos' todavía.")
+    st.subheader("📥 Archivos subidos recientemente (Google Drive)")
+
+    try:
+        archivos = list_drive_files(limit=50)
+        if not archivos:
+            st.info("📭 No hay archivos en la carpeta todavía.")
+        else:
+            for f in archivos:
+                name = f.get("name", "archivo")
+                created = f.get("createdTime", "")
+                link = f.get("webViewLink", "")
+                fecha = created[:10] if created else ""
+
+                col_a, col_b = st.columns([3, 1])
+                with col_a:
+                    st.markdown(f"📄 **{name}** {f'— {fecha}' if fecha else ''}")
+                with col_b:
+                    if link:
+                        st.markdown(link)
+                    else:
+                        st.caption("Sin link")
+    except Exception as exc:
+        st.error(f"❌ Error listando Google Drive: {exc}")
